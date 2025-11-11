@@ -1,0 +1,119 @@
+trigger:
+  branches:
+    include:
+      - main
+
+stages:
+- stage: Build
+  displayName: Build React App
+  jobs:
+  - job: Build
+    pool:
+      vmImage: ubuntu-latest
+    steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '20.x'
+      displayName: 'Install Node.js'
+
+    - script: |
+        npm install
+        npm run build
+      displayName: 'Install & Build'
+
+    - task: ArchiveFiles@2
+      inputs:
+        rootFolderOrFile: '$(System.DefaultWorkingDirectory)/dist'
+        includeRootFolder: false
+        archiveType: 'zip'
+        archiveFile: '$(Build.ArtifactStagingDirectory)/build.zip'
+        replaceExistingArchive: true
+      displayName: 'Zip Build'
+
+    - publish: '$(Build.ArtifactStagingDirectory)/build.zip'
+      artifact: drop
+
+# === DEPLOY TO STORAGE ===
+- stage: DeployDev
+  displayName: Deploy to Azure Storage (Static Website)
+  dependsOn: Build
+  jobs:
+  - deployment: DevDeploy
+    environment: Dev
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - download: current
+            artifact: drop
+
+          - task: ExtractFiles@1
+            inputs:
+              archiveFilePatterns: '$(Pipeline.Workspace)/drop/build.zip'
+              destinationFolder: '$(Pipeline.Workspace)/drop/unzipped'
+            displayName: 'Unzip build files'
+
+          - task: AzureCLI@2
+            inputs:
+              azureSubscription: 'ranjan51' # Your service connection name
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                echo "Uploading to Azure Storage Static Website..."
+                az storage blob upload-batch \
+                  --account-name cicdlearning \
+                  --auth-mode login \
+                  -s "$(Pipeline.Workspace)/drop/unzipped" \
+                  -d '$web' \
+                  --overwrite true
+            displayName: 'Upload to Azure Storage $web container'
+
+
+
+
+
+
+
+
+stages:
+  - build
+  - deploy
+
+variables:
+  DIST_FOLDER: build/
+
+build_app:
+  stage: build
+  image: node:18
+  script:
+    - echo " Installing dependencies..."
+    - npm install --force
+    - echo "⚙️ Building the app with environment variables..."
+    - CI=false APP_API_URL="$APP_API_URL" SERVER_ENVIRONMENT="$SERVER_ENVIRONMENT" REDIRECT_URL="$REDIRECT_URL" npm run build
+  artifacts:
+    paths:
+      - $DIST_FOLDER
+
+deploy_to_azure:
+  stage: deploy
+  image: mcr.microsoft.com/azure-cli
+  script:
+    - echo "🔐 Logging into Azure...."
+    - az login --identity || echo "Skipping login if using key-based auth"
+
+    - echo "🧹 Cleaning old files from Azure Blob Storage..."
+    - |
+      az storage blob delete-batch \
+        --account-name "$AZURE_STORAGE_ACCOUNT" \
+        --source '$web' \
+        --auth-mode key \
+        --account-key "$AZURE_STORAGE_KEY"
+
+    - echo "🚀 Uploading new files to Azure Blob Storage..."
+    - |
+      az storage blob upload-batch \
+        --destination '$web' \
+        --source $DIST_FOLDER \
+        --account-name "$AZURE_STORAGE_ACCOUNT" \
+        --auth-mode key \
+        --account-key "$AZURE_STORAGE_KEY"
