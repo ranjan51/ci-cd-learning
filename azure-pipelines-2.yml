@@ -1,0 +1,63 @@
+# Deploy React App to Azure Storage Account (Static Website)
+# Trigger on push to main branch
+
+trigger:
+- main
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  # Change if your build output folder is different
+  buildDir: 'build'
+  azureSubscription: 'ranjan51' # <-- Replace with your Azure Service Connection name
+  storageAccountName: 'cicdlearning'
+  resourceGroupName: 'YOUR_RESOURCE_GROUP_NAME' # <-- Replace this with your RG name
+  location: 'Central India' # optional, for info only
+
+steps:
+# 1️⃣ Install Node.js
+- task: NodeTool@0
+  inputs:
+    versionSpec: '20.x'
+  displayName: 'Install Node.js'
+
+# 2️⃣ Install dependencies and build the React app
+- script: |
+    npm install
+    npm run build
+  displayName: 'Install dependencies and build React app'
+
+# 3️⃣ Archive build artifacts
+- task: ArchiveFiles@2
+  inputs:
+    rootFolderOrFile: '$(buildDir)'
+    includeRootFolder: false
+    archiveType: 'zip'
+    archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
+    replaceExistingArchive: true
+  displayName: 'Archive build output'
+
+# 4️⃣ Publish artifact (optional, for history)
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
+    ArtifactName: 'drop'
+    publishLocation: 'Container'
+  displayName: 'Publish build artifact'
+
+# 5️⃣ Deploy to Azure Storage Account Static Website
+- task: AzureCLI@2
+  inputs:
+    azureSubscription: '$(azureSubscription)'
+    scriptType: 'bash'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      echo "Deploying React build to Azure Storage Account..."
+      az storage blob upload-batch \
+        --account-name $(storageAccountName) \
+        --auth-mode key \
+        -s $(buildDir) \
+        -d '$web' \
+        --overwrite
+  displayName: 'Deploy to Azure Storage Static Website'
