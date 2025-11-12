@@ -1,9 +1,12 @@
 trigger:
   branches:
     include:
-      - main
+      - main  # ✅ Only main branch triggers pipeline
 
 stages:
+# ===============================
+# BUILD STAGE
+# ===============================
 - stage: Build
   displayName: Build React App
   jobs:
@@ -13,33 +16,37 @@ stages:
     steps:
     - task: NodeTool@0
       inputs:
-        versionSpec: '20.x'
-      displayName: 'Install Node.js'
+        versionSpec: 'latest'  # ✅ Uses the latest Node.js available in Microsoft-hosted agents
+      displayName: 'Install Latest Node.js'
 
     - script: |
-        npm install
+        npm ci
         npm run build
-      displayName: 'Install & Build'
+      displayName: 'Install & Build React App'
 
     - task: ArchiveFiles@2
       inputs:
-        rootFolderOrFile: '$(System.DefaultWorkingDirectory)/dist'
+        rootFolderOrFile: '$(System.DefaultWorkingDirectory)/build'  # ✅ React builds into "build" folder
         includeRootFolder: false
         archiveType: 'zip'
         archiveFile: '$(Build.ArtifactStagingDirectory)/build.zip'
         replaceExistingArchive: true
-      displayName: 'Zip Build'
+      displayName: 'Zip React Build Output'
 
     - publish: '$(Build.ArtifactStagingDirectory)/build.zip'
       artifact: drop
 
-# === DEPLOY TO STORAGE ===
-- stage: DeployDev
+# ===============================
+# DEPLOYMENT STAGE
+# ===============================
+- stage: Deploy
   displayName: Deploy to Azure Storage (Static Website)
   dependsOn: Build
+  condition: succeeded()  # ✅ Only deploy if build succeeds
   jobs:
-  - deployment: DevDeploy
-    environment: Dev
+  - deployment: MainDeploy
+    displayName: Deploy React to Azure Storage
+    environment: Production  # ✅ Single environment for main branch
     strategy:
       runOnce:
         deploy:
@@ -51,69 +58,19 @@ stages:
             inputs:
               archiveFilePatterns: '$(Pipeline.Workspace)/drop/build.zip'
               destinationFolder: '$(Pipeline.Workspace)/drop/unzipped'
-            displayName: 'Unzip build files'
+            displayName: 'Unzip Build Files'
 
           - task: AzureCLI@2
             inputs:
-              azureSubscription: 'ranjan51' # Your service connection name
+              azureSubscription: 'Ci-CD-React-Learning-SA'  # ✅ Must be a valid Azure Resource Manager connection
               scriptType: 'bash'
               scriptLocation: 'inlineScript'
               inlineScript: |
-                echo "Uploading to Azure Storage Static Website..."
+                echo "Uploading React build to Azure Storage Static Website..."
                 az storage blob upload-batch \
                   --account-name cicdlearning \
                   --auth-mode login \
                   -s "$(Pipeline.Workspace)/drop/unzipped" \
                   -d '$web' \
                   --overwrite true
-            displayName: 'Upload to Azure Storage $web container'
-
-
-
-
-
-
-
-
-stages:
-  - build
-  - deploy
-
-variables:
-  DIST_FOLDER: build/
-
-build_app:
-  stage: build
-  image: node:18
-  script:
-    - echo " Installing dependencies..."
-    - npm install --force
-    - echo "⚙️ Building the app with environment variables..."
-    - CI=false APP_API_URL="$APP_API_URL" SERVER_ENVIRONMENT="$SERVER_ENVIRONMENT" REDIRECT_URL="$REDIRECT_URL" npm run build
-  artifacts:
-    paths:
-      - $DIST_FOLDER
-
-deploy_to_azure:
-  stage: deploy
-  image: mcr.microsoft.com/azure-cli
-  script:
-    - echo "🔐 Logging into Azure...."
-    - az login --identity || echo "Skipping login if using key-based auth"
-
-    - echo "🧹 Cleaning old files from Azure Blob Storage..."
-    - |
-      az storage blob delete-batch \
-        --account-name "$AZURE_STORAGE_ACCOUNT" \
-        --source '$web' \
-        --auth-mode key \
-        --account-key "$AZURE_STORAGE_KEY"
-
-    - echo "🚀 Uploading new files to Azure Blob Storage..."
-    - |
-      az storage blob upload-batch \
-        --destination '$web' \
-        --source $DIST_FOLDER \
-        --account-name "$AZURE_STORAGE_ACCOUNT" \
-        --auth-mode key \
-        --account-key "$AZURE_STORAGE_KEY"
+            displayName: 'Deploy to Azure Storage $web container'
