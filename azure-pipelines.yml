@@ -16,8 +16,8 @@ stages:
     steps:
     - task: NodeTool@0
       inputs:
-        versionSpec: 'latest'  # ✅ Uses the latest Node.js available in Microsoft-hosted agents
-      displayName: 'Install Latest Node.js'
+        versionSpec: '22.x'  # ✅ Use latest stable Node.js LTS version
+      displayName: 'Install Node.js 22.x'
 
     - script: |
         npm ci
@@ -26,7 +26,7 @@ stages:
 
     - task: ArchiveFiles@2
       inputs:
-        rootFolderOrFile: '$(System.DefaultWorkingDirectory)/build'  # ✅ React builds into "build" folder
+        rootFolderOrFile: '$(System.DefaultWorkingDirectory)/build'
         includeRootFolder: false
         archiveType: 'zip'
         archiveFile: '$(Build.ArtifactStagingDirectory)/build.zip'
@@ -42,11 +42,11 @@ stages:
 - stage: Deploy
   displayName: Deploy to Azure Storage (Static Website)
   dependsOn: Build
-  condition: succeeded()  # ✅ Only deploy if build succeeds
+  condition: succeeded()
   jobs:
   - deployment: MainDeploy
     displayName: Deploy React to Azure Storage
-    environment: Production  # ✅ Single environment for main branch
+    environment: Production
     strategy:
       runOnce:
         deploy:
@@ -62,7 +62,7 @@ stages:
 
           - task: AzureCLI@2
             inputs:
-              azureSubscription: 'Ci-CD-React-Learning-SA'  # ✅ Must be a valid Azure Resource Manager connection
+              azureSubscription: 'Ci-CD-React-Learning-SA'
               scriptType: 'bash'
               scriptLocation: 'inlineScript'
               inlineScript: |
