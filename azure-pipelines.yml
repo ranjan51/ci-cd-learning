@@ -68,9 +68,9 @@ stages:
               inlineScript: |
                 echo "Uploading React build to Azure Storage Static Website..."
                 az storage blob upload-batch \
-                  --account-name cicdlearning \
-                  --auth-mode login \
-                  -s "$(Pipeline.Workspace)/drop/unzipped" \
-                  -d '$web' \
-                  --overwrite true
+                --account-name cicdlearning \
+                --auth-mode key \
+                -s "$(Pipeline.Workspace)/drop/unzipped" \
+                -d '$web' \
+                --overwrite true
             displayName: 'Deploy to Azure Storage $web container'
