@@ -5,7 +5,7 @@ function App() {
   return (
     <>
      <div>
-      <h1>CI/CD Learning, focus on your career</h1>
+      <h1>CI/CD Learning, First choose yourself and then choose who choose you.</h1>
      </div>
     </>
   )
