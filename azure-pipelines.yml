@@ -1,32 +1,39 @@
 trigger:
   branches:
     include:
-      - main  # ✅ Only main branch triggers pipeline
+      - main  # ✅ Only trigger pipeline on main branch commits
 
 stages:
 # ===============================
 # BUILD STAGE
 # ===============================
 - stage: Build
-  displayName: Build React App
+  displayName: 'Build React App'
   jobs:
   - job: Build
+    displayName: 'Build React Project'
     pool:
       vmImage: ubuntu-latest
+
     steps:
     - task: NodeTool@0
       inputs:
-        versionSpec: '22.x'  # ✅ Use latest stable Node.js LTS version
+        versionSpec: '22.x'  # ✅ Use latest Node.js LTS version
       displayName: 'Install Node.js 22.x'
 
     - script: |
+        echo "Installing dependencies..."
         npm ci
+
+        echo "Building React app..."
         npm run build
       displayName: 'Install & Build React App'
 
+    # ✅ Ensure correct output folder
+    # (For CRA/Vite, it's usually 'build' or 'dist')
     - task: ArchiveFiles@2
       inputs:
-        rootFolderOrFile: '$(System.DefaultWorkingDirectory)/dist'
+        rootFolderOrFile: '$(System.DefaultWorkingDirectory)/build'
         includeRootFolder: false
         archiveType: 'zip'
         archiveFile: '$(Build.ArtifactStagingDirectory)/build.zip'
@@ -35,18 +42,21 @@ stages:
 
     - publish: '$(Build.ArtifactStagingDirectory)/build.zip'
       artifact: drop
+      displayName: 'Publish Build Artifact'
+
 
 # ===============================
 # DEPLOYMENT STAGE
 # ===============================
 - stage: Deploy
-  displayName: Deploy to Azure Storage (Static Website)
+  displayName: 'Deploy to Azure Storage (Static Website)'
   dependsOn: Build
   condition: succeeded()
+
   jobs:
   - deployment: MainDeploy
-    displayName: Deploy React to Azure Storage
-    environment: Production
+    displayName: 'Deploy React to Azure Storage'
+    environment: 'Production'
     strategy:
       runOnce:
         deploy:
@@ -60,17 +70,29 @@ stages:
               destinationFolder: '$(Pipeline.Workspace)/drop/unzipped'
             displayName: 'Unzip Build Files'
 
+          # ✅ Deploy to Azure Storage
           - task: AzureCLI@2
             inputs:
-              azureSubscription: 'Ci-CD-React-Learning-SA'
+              azureSubscription: 'Ci-CD-React-Learning-SA'  # Your service connection name
               scriptType: 'bash'
               scriptLocation: 'inlineScript'
               inlineScript: |
-                echo "Uploading React build to Azure Storage Static Website..."
+                echo "Deploying React app to Azure Storage Static Website..."
+                
+                # Enable static website hosting if not already enabled
+                az storage blob service-properties update \
+                  --account-name cicdlearning \
+                  --static-website \
+                  --index-document index.html \
+                  --error-document index.html
+
+                echo "Uploading files to $web container..."
                 az storage blob upload-batch \
                   --account-name cicdlearning \
-                  --auth-mode login \
+                  --auth-mode key \
                   -s "$(Pipeline.Workspace)/drop/unzipped" \
                   -d '$web' \
                   --overwrite true
+
+                echo "✅ Deployment completed successfully."
             displayName: 'Deploy to Azure Storage $web container'
